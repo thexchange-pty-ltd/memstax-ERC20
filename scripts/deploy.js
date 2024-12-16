@@ -2,8 +2,8 @@ async function main() {
     const [deployer] = await ethers.getSigners();
     console.log("Deploying contracts with the account:", deployer.address);
   
-    const StaxToken = await ethers.getContractFactory("StaxToken");
-    const token = await StaxToken.deploy();
+    const MEMEStaxToken = await ethers.getContractFactory("MEMEStaxToken");
+    const token = await MEMEStaxToken.deploy();
   
     console.log("Token address:", token.address);
   }

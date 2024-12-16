@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
-contract StaxToken is ERC20, Ownable {
-    uint256 public constant maxSupply = 1_000_000_000;
-    uint256 public usdtPrice = 0.09 * 10**6;
+contract MEMEStaxToken is ERC20, Ownable {
+    uint256 public constant ONE_BILLION = 1_000_000_000;
+    uint256 public constant maxSupply = 888_000_000_000;
+    uint256 public usdtPricePerBillion = 8880000000;
     uint256 public privateListingEndTime;
     address[] public vestingGroups;
-    IERC20 internal constant shibToken =
-        IERC20(0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE);
+    IERC20 internal constant shibToken = IERC20(0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE);
+    IERC20 internal constant usdtToken = IERC20(0xdAC17F958D2ee523a2206206994597C13D831ec7);
+    IERC20 internal constant usdcToken = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
 
     // Chainlink Price Feed Addresses
     AggregatorV3Interface internal immutable shibEthPriceFeed;
     AggregatorV3Interface internal immutable ethUsdtPriceFeed;
 
-    constructor() ERC20("STAX Token", "STAX") Ownable(msg.sender) {
+    constructor() ERC20("MEMESTAX", "MEMSTX") Ownable(msg.sender) {
         // ETH/SHIB price feed address
         shibEthPriceFeed = AggregatorV3Interface(
             0x8dD1CD88F43aF196ae478e91b9F5E4Ac69A97C61
@@ -27,6 +29,8 @@ contract StaxToken is ERC20, Ownable {
         ethUsdtPriceFeed = AggregatorV3Interface(
             0xEe9F2375b4bdF6387aa8265dD4FB8F16512A1d46
         );
+
+
         address[] memory addresses = new address[](0);
 
         uint256[] memory maxAmounts = new uint256[](0);
@@ -34,10 +38,10 @@ contract StaxToken is ERC20, Ownable {
         addGroup(addresses, maxAmounts, 0);
     }
 
-    function mint(uint256 amount) public payable mintingIsAllowed {
-        uint256 totalPrice = convertUsdtToEth(
-            (amount * usdtPrice) / (10**decimals())
-        );
+
+    function mint(uint256 numOfBillions) public payable mintingIsAllowed {
+        uint256 amount = numOfBillions * ONE_BILLION * 10 ** decimals();
+        uint256 totalPrice = convertUsdtToEth(numOfBillions * usdtPricePerBillion);
         require(
             totalSupply() + amount <= maxSupply * 10**decimals(),
             "Max supply exceeded"
@@ -56,9 +60,11 @@ contract StaxToken is ERC20, Ownable {
         privateRoundContract.addShareholder(msg.sender, amount);
     }
 
-    function mintForShib(uint256 amount) public mintingIsAllowed {
+    function mintForShib(uint256 numOfBillions) public mintingIsAllowed {
+        uint256 amount = numOfBillions * ONE_BILLION * 10 ** decimals();
+
         uint256 totalPriceInShib = convertUsdtToShib(
-            ((amount * usdtPrice) / (10**decimals()))
+            numOfBillions * usdtPricePerBillion
         );
         require(
             totalSupply() + amount <= maxSupply * 10**decimals(),
@@ -75,6 +81,29 @@ contract StaxToken is ERC20, Ownable {
         privateRoundContract.addShareholder(msg.sender, amount);
     }
 
+
+
+    function mintForStableCoin(uint256 numOfBillions, address stableCoinAddress) public mintingIsAllowed {
+        uint256 amount = numOfBillions * ONE_BILLION * 10 ** decimals();
+        require(
+            stableCoinAddress == address(usdtToken) || stableCoinAddress == address(usdcToken),
+            "Unsupported stablecoin"
+        );
+        IERC20 stableCoin = IERC20(stableCoinAddress);
+        uint256 totalPriceInStableCoin = numOfBillions * usdtPricePerBillion;
+        require(
+            totalSupply() + amount <= maxSupply * 10**decimals(),
+            "Max supply exceeded"
+        );
+
+        stableCoin.transferFrom(msg.sender, address(this), totalPriceInStableCoin);
+
+        address privateRoundAddress = vestingGroups[0];
+        VestingContract privateRoundContract = VestingContract(privateRoundAddress);
+        _mint(privateRoundAddress, amount);
+        privateRoundContract.addShareholder(msg.sender, amount);
+    }
+
     modifier mintingIsAllowed() {
         require(privateListingEndTime == 0, "Minting is finished");
         _;
@@ -85,7 +114,7 @@ contract StaxToken is ERC20, Ownable {
     }
 
     function changePrice(uint256 _price) public onlyOwner {
-        usdtPrice = _price;
+        usdtPricePerBillion = _price;
     }
 
     // Function to withdraw collected ETH to the owner's wallet
@@ -104,6 +133,8 @@ contract StaxToken is ERC20, Ownable {
         bool success = shibToken.transfer(owner(), contractBalance); // Transfer all SHIB tokens to the owner
         require(success, "SHIB transfer failed");
     }
+
+   
 
     function airdrop(address to, uint256 amount) public onlyOwner {
         require(
@@ -175,6 +206,7 @@ contract StaxToken is ERC20, Ownable {
         return uint256(price);
     }
 
+
     function convertUsdtToShib(uint256 usdtAmount)
         public
         view
@@ -197,6 +229,25 @@ contract StaxToken is ERC20, Ownable {
         uint256 ethAmount = (usdtAmount * usdtPerEth) / 10**6;
 
         return ethAmount;
+    }
+
+
+
+    function withdrawStableCoins() public onlyOwner {
+        uint256 usdtBalance = usdtToken.balanceOf(address(this));
+        uint256 usdcBalance = usdcToken.balanceOf(address(this));
+
+        require(usdtBalance > 0 || usdcBalance > 0, "No stablecoins to withdraw");
+
+        if (usdtBalance > 0) {
+            bool usdtSuccess = usdtToken.transfer(owner(), usdtBalance);
+            require(usdtSuccess, "USDT transfer failed");
+        }
+
+        if (usdcBalance > 0) {
+            bool usdcSuccess = usdcToken.transfer(owner(), usdcBalance);
+            require(usdcSuccess, "USDC transfer failed");
+        }
     }
 }
 
@@ -242,7 +293,7 @@ contract VestingContract is Ownable {
         uint256 allowedAmountInPercentage = 0;
         uint256 maxWithdrawableAmount = shareholders[shareholderAddress]
             .maximumTokens;
-        StaxToken staxToken = StaxToken(staxTokenAddress);
+        MEMEStaxToken staxToken = MEMEStaxToken(staxTokenAddress);
 
         uint256 privateListingEndTime = staxToken.privateListingEndTime();
 
@@ -281,7 +332,7 @@ contract VestingContract is Ownable {
     function withdraw() public onlyShareholder {
         uint256 allowedAmount = calculateAllowedAmount(msg.sender);
         uint256 withdrawnTokens = shareholders[msg.sender].withdrawnTokens;
-        StaxToken staxToken = StaxToken(staxTokenAddress);
+        MEMEStaxToken staxToken = MEMEStaxToken(staxTokenAddress);
         uint256 amount = allowedAmount - withdrawnTokens;
         staxToken.transfer(msg.sender, amount);
         shareholders[msg.sender].withdrawnTokens += amount;

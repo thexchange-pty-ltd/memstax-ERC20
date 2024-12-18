@@ -35,7 +35,11 @@ contract MEMEStaxToken is ERC20, Ownable {
 
         uint256[] memory maxAmounts = new uint256[](0);
         // private round group
-        addGroup(addresses, maxAmounts, 0);
+        addGroup(addresses, maxAmounts, 0, 2500);
+    }
+
+    function burn(uint256 amount) public{
+        _burn(msg.sender, amount);
     }
 
 
@@ -160,7 +164,8 @@ contract MEMEStaxToken is ERC20, Ownable {
     function addGroup(
         address[] memory shareholderAddresses,
         uint256[] memory shareholderMaxAmount,
-        uint256 initialVestingPeriod
+        uint256 initialVestingPeriod,
+        uint256 percentage
     ) public onlyOwner {
         uint256 amount = 0;
         for (uint256 i = 0; i < shareholderMaxAmount.length; i++)
@@ -174,7 +179,8 @@ contract MEMEStaxToken is ERC20, Ownable {
             shareholderAddresses,
             shareholderMaxAmount,
             initialVestingPeriod,
-            amount
+            amount,
+            percentage
         );
         _mint(address(vestingContract), amount);
         vestingGroups.push(address(vestingContract));
@@ -255,7 +261,6 @@ contract VestingContract is Ownable {
     uint256 public constant ONE_MONTH = 30 days;
     //uint256 public constant ONE_MONTH = 30;
     uint256 public constant TOTAL_PERCENTAGE = 10000;
-    uint256 public constant TEN_PERCENT = 1000;
     address public immutable staxTokenAddress;
 
     struct ShareholderInfo {
@@ -267,16 +272,20 @@ contract VestingContract is Ownable {
 
     uint256 public immutable initialVestingPeriod;
     uint256 public immutable initialStaxAmount;
+    uint256 public immutable percentage;
+   
 
     constructor(
         address[] memory shareholderAddresses,
         uint256[] memory shareholderAmount,
         uint256 _initialVestingPeriod,
-        uint256 _initialStaxAmount
+        uint256 _initialStaxAmount,
+        uint256 _percentage
     ) Ownable(msg.sender) {
         staxTokenAddress = msg.sender;
         initialVestingPeriod = _initialVestingPeriod;
         initialStaxAmount = _initialStaxAmount;
+        percentage = _percentage;
         for (uint256 i = 0; i < shareholderAddresses.length; i++) {
             shareholders[shareholderAddresses[i]] = ShareholderInfo(
                 shareholderAmount[i],
@@ -304,7 +313,7 @@ contract VestingContract is Ownable {
             privateListingEndTime > 0 &&
             initialVestingPeriodEnd <= block.timestamp
         ) {
-            allowedAmountInPercentage += TEN_PERCENT;
+            allowedAmountInPercentage += percentage;
         }
 
         if (
@@ -315,7 +324,7 @@ contract VestingContract is Ownable {
                 initialVestingPeriodEnd;
             uint256 months = vestingPeriodElapsedTime / ONE_MONTH;
 
-            allowedAmountInPercentage += months * TEN_PERCENT;
+            allowedAmountInPercentage += months * percentage;
 
             // Cap it at TOTAL_PERCENTAGE
             if (allowedAmountInPercentage > TOTAL_PERCENTAGE) {
